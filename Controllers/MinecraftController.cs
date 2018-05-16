@@ -9,20 +9,34 @@ using System.Diagnostics;
 using System.IO;
 using MineCraftMonitor.Models;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.JsonPatch;
 
 namespace MineCraftMonitor.Controllers
 {
     [Route("api/[controller]")]
     public class MinecraftController : Controller
     {
+
+
+        public MinecraftController(IConfiguration configuration)
+        {
+            Configuration = configuration;
+        }
+
+        public IConfiguration Configuration { get; }
+
         // GET api/minecraft
         [HttpGet]
         public MineCraftSummary Get()
         {
-            var config = KubernetesClientConfiguration.InClusterConfig();
-            //var config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
+            KubernetesClientConfiguration config;
+            if (Configuration["ASPNETCORE_ENVIRONMENT"] == "Debug") {
+                config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
+            } else {
+                config = KubernetesClientConfiguration.InClusterConfig();
+            }
             IKubernetes client = new Kubernetes(config);
-            Console.WriteLine("Starting Request!");
 
             var list = client.ListNamespacedPod("default");
 
@@ -82,43 +96,101 @@ namespace MineCraftMonitor.Controllers
             return summary;
         }
 
-        // GET api/values/5
-        [HttpGet("{id}")]
-        public string Get(int id)
+        // GET api/minscraft/instance/{id}
+        [HttpGet("instance/count")]
+        public string GetInstanceCount()
         {
-            return "value";
+            KubernetesClientConfiguration config;
+            if (Configuration["ASPNETCORE_ENVIRONMENT"] == "Debug") {
+                config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
+            } else {
+                config = KubernetesClientConfiguration.InClusterConfig();
+            }
+            IKubernetes client = new Kubernetes(config);
+
+            var list = client.ListNamespacedPod("default");
+
+            var output = new List<MineCraftInstance>();
+
+            int count = 0;
+            foreach (var item in list.Items)
+            {
+                if (item.Metadata.Name.StartsWith("minecraft-"))
+                {
+                    count++;
+                }
+            }
+
+            return count.ToString();
         }
 
-        // POST api/values
-        [HttpPost]
-        public void Post([FromBody]string value)
+                // PUT api/values/5
+        [HttpPut("instance/count/{count}")]
+        public string Put(int count)
         {
+            string output = "";
+            Process process = new Process();
+            process.StartInfo.FileName = "kubectl";
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.Arguments = "scale sts minecraft --replicas " + count.ToString();
+            process.Start();
+
+            // Synchronously read the standard output of the spawned process. 
+            StreamReader reader = process.StandardOutput;
+            output = reader.ReadToEnd();
+
+            return output;
+            /*
+            if (count > 0 && count < 10) {
+                KubernetesClientConfiguration config;
+                if (Configuration["ASPNETCORE_ENVIRONMENT"] == "Debug") {
+                    config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
+                } else {
+                    config = KubernetesClientConfiguration.InClusterConfig();
+                }
+                IKubernetes client = new Kubernetes(config);
+
+                V1Patch patch = new V1Patch(new JsonPatchDocument("{'spec':{'replicas':" + count.ToString() + "}}"));
+                client.PatchNamespacedStatefulSetScale(patch,"minecraft","default");
+
+            }
+            */
+            //This is where we update the count.
         }
 
-        // PUT api/values/5
-        [HttpPut("{id}")]
-        public void Put(int id, [FromBody]string value)
+
+        // GET api/minscraft/instance/{id}
+        [HttpGet("instance")]
+        public List<MineCraftInstance> GetInstance()
         {
+            KubernetesClientConfiguration config;
+            if (Configuration["ASPNETCORE_ENVIRONMENT"] == "Debug") {
+                config = KubernetesClientConfiguration.BuildConfigFromConfigFile();
+            } else {
+                config = KubernetesClientConfiguration.InClusterConfig();
+            }
+            IKubernetes client = new Kubernetes(config);
+
+            var list = client.ListNamespacedPod("default");
+
+            var output = new List<MineCraftInstance>();
+
+            foreach (var item in list.Items)
+            {
+                if (item.Metadata.Name.StartsWith("minecraft-"))
+                {
+                    MineCraftInstance instance = new MineCraftInstance();
+                    instance.name = item.Metadata.Name;
+                    instance.endpoints = new MineCraftEndpoint();
+                    instance.endpoints.minecraft = item.Status.PodIP.ToString() + ":25565";
+                    instance.endpoints.rcon = item.Status.PodIP.ToString() + ":25565";
+                    instance.endpoints.monitor = item.Status.PodIP.ToString() + ":5000";
+                    output.Add(instance);
+                }
+            }
+            return output;
         }
 
-        // DELETE api/values/5
-        [HttpDelete("{id}")]
-        public void Delete(int id)
-        {
-        }
-
-        private async static Task ExecInPod(IKubernetes client, V1Pod pod)
-        {
-            var webSocket = await client.WebSocketNamespacedPodExecAsync(pod.Metadata.Name, "default", "ls", pod.Spec.Containers[0].Name);
-
-            var demux = new StreamDemuxer(webSocket);
-            demux.Start();
-
-            var buff = new byte[4096];
-            var stream = demux.GetStream(1, 1);
-            var read = stream.Read(buff, 0, 4096);
-            var str = System.Text.Encoding.Default.GetString(buff);
-            Console.WriteLine(str);
-        }
     }
 }

@@ -21,4 +21,16 @@ namespace MineCraftMonitor.Models
 
         public List<MineCraftServer> servers { get; set; }
     }
+
+    public class MineCraftEndpoint
+    {
+        public string minecraft {get; set;}
+        public string rcon { get; set; }
+        public string monitor { get; set; }
+    }
+    public class MineCraftInstance
+    {
+        public string name { get; set; }
+        public MineCraftEndpoint endpoints {get; set;}
+    }
 }
