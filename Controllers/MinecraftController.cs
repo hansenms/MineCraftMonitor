@@ -11,6 +11,7 @@ using MineCraftMonitor.Models;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.JsonPatch;
+using Newtonsoft.Json;
 
 namespace MineCraftMonitor.Controllers
 {
@@ -129,19 +130,7 @@ namespace MineCraftMonitor.Controllers
         public string Put(int count)
         {
             string output = "";
-            Process process = new Process();
-            process.StartInfo.FileName = "kubectl";
-            process.StartInfo.UseShellExecute = false;
-            process.StartInfo.RedirectStandardOutput = true;
-            process.StartInfo.Arguments = "scale sts minecraft --replicas " + count.ToString();
-            process.Start();
-
-            // Synchronously read the standard output of the spawned process. 
-            StreamReader reader = process.StandardOutput;
-            output = reader.ReadToEnd();
-
-            return output;
-            /*
+        
             if (count > 0 && count < 10) {
                 KubernetesClientConfiguration config;
                 if (Configuration["ASPNETCORE_ENVIRONMENT"] == "Debug") {
@@ -151,12 +140,15 @@ namespace MineCraftMonitor.Controllers
                 }
                 IKubernetes client = new Kubernetes(config);
 
-                V1Patch patch = new V1Patch(new JsonPatchDocument("{'spec':{'replicas':" + count.ToString() + "}}"));
+                JsonPatchDocument<V1StatefulSet> jsonDoc = new JsonPatchDocument<V1StatefulSet>();
+                jsonDoc.Replace(p => p.Spec.Replicas, count);
+                Console.WriteLine(JsonConvert.SerializeObject(jsonDoc));
+                V1Patch patch = new V1Patch(jsonDoc);
                 client.PatchNamespacedStatefulSetScale(patch,"minecraft","default");
-
             }
-            */
+
             //This is where we update the count.
+            return output;
         }
 
 
