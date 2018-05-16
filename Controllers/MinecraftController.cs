@@ -27,7 +27,7 @@ namespace MineCraftMonitor.Controllers
             var list = client.ListNamespacedPod("default");
 
             MineCraftSummary summary = new MineCraftSummary();
-            summary.totals = new MineCraftServer();
+            summary.totals = new MineCraftServerStats();
             summary.servers = new List<MineCraftServer>();
 
             foreach (var item in list.Items)
@@ -39,7 +39,7 @@ namespace MineCraftMonitor.Controllers
                     process.StartInfo.FileName = "kubectl";
                     process.StartInfo.UseShellExecute = false;
                     process.StartInfo.RedirectStandardOutput = true;
-                    process.StartInfo.Arguments = "exec -t " + item.Metadata.Name + " -- ls -1 world/playerdata/";
+                    process.StartInfo.Arguments = "exec -t -c minecraft " + item.Metadata.Name + " -- ls -1 world/playerdata/";
                     process.Start();
 
                     // Synchronously read the standard output of the spawned process. 
@@ -48,7 +48,9 @@ namespace MineCraftMonitor.Controllers
                     int numLines = output.Split('\n').Length - 1;
 
                     MineCraftServer srv = new MineCraftServer();
-                    srv.population = numLines;
+                    srv.name = item.Metadata.Name;
+                    srv.stats = new MineCraftServerStats();
+                    srv.stats.population = numLines;
 
                     process = new Process();
                     process.StartInfo.FileName = "rcon-cli";
@@ -65,13 +67,13 @@ namespace MineCraftMonitor.Controllers
                     //string rconout = "There are 1/20 players online:CloudyNerd";
                     string[] numbers = Regex.Split(rconout, @"\D+");
 
-                    srv.playersOnline = int.Parse(numbers[1]);
-                    srv.maxPlayers = int.Parse(numbers[2]);
+                    srv.stats.playersOnline = int.Parse(numbers[1]);
+                    srv.stats.maxPlayers = int.Parse(numbers[2]);
 
                     summary.servers.Add(srv);
-                    summary.totals.population += srv.population;
-                    summary.totals.maxPlayers += srv.maxPlayers;
-                    summary.totals.playersOnline += srv.playersOnline;
+                    summary.totals.population += srv.stats.population;
+                    summary.totals.maxPlayers += srv.stats.maxPlayers;
+                    summary.totals.playersOnline += srv.stats.playersOnline;
                 }
 
                 Console.WriteLine(item.Metadata.Name);
