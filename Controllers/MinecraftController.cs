@@ -18,8 +18,6 @@ namespace MineCraftMonitor.Controllers
     [Route("api/[controller]")]
     public class MinecraftController : Controller
     {
-
-
         public MinecraftController(IConfiguration configuration)
         {
             Configuration = configuration;
@@ -47,14 +45,14 @@ namespace MineCraftMonitor.Controllers
 
             foreach (var item in list.Items)
             {
-                if (item.Metadata.Name.StartsWith("minecraft-"))
+                if (item.Metadata.Name.StartsWith(Configuration["MCPodPrefix"]))
                 {
 
                     Process process = new Process();
                     process.StartInfo.FileName = "kubectl";
                     process.StartInfo.UseShellExecute = false;
                     process.StartInfo.RedirectStandardOutput = true;
-                    process.StartInfo.Arguments = "exec -t -c minecraft " + item.Metadata.Name + " -- ls -1 world/playerdata/";
+                    process.StartInfo.Arguments = "exec -t -c " + Configuration["MCContainerName"] + " " + item.Metadata.Name + " -- ls -1 world/playerdata/";
                     process.Start();
 
                     // Synchronously read the standard output of the spawned process. 
@@ -116,7 +114,7 @@ namespace MineCraftMonitor.Controllers
             int count = 0;
             foreach (var item in list.Items)
             {
-                if (item.Metadata.Name.StartsWith("minecraft-"))
+                if (item.Metadata.Name.StartsWith(Configuration["MCPodPrefix"]))
                 {
                     count++;
                 }
@@ -144,7 +142,8 @@ namespace MineCraftMonitor.Controllers
                 jsonDoc.Replace(p => p.Spec.Replicas, count);
                 Console.WriteLine(JsonConvert.SerializeObject(jsonDoc));
                 V1Patch patch = new V1Patch(jsonDoc);
-                client.PatchNamespacedStatefulSetScale(patch,"minecraft","default");
+                client.PatchNamespacedStatefulSetScale(patch,Configuration["MCStafefulSetName"],"default");
+
             }
 
             //This is where we update the count.
@@ -170,7 +169,7 @@ namespace MineCraftMonitor.Controllers
 
             foreach (var item in list.Items)
             {
-                if (item.Metadata.Name.StartsWith("minecraft-"))
+                if (item.Metadata.Name.StartsWith(Configuration["MCPodPrefix"]))
                 {
                     MineCraftInstance instance = new MineCraftInstance();
                     instance.name = item.Metadata.Name;
@@ -182,6 +181,48 @@ namespace MineCraftMonitor.Controllers
                 }
             }
             return output;
+        }
+
+        // GET api/minscraft/top
+        [HttpGet("top")]
+        public KubernetesTop GetTop()
+        {
+            Process process = new Process();
+            process.StartInfo.FileName = "kubectl";
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.Arguments = "top nodes";
+            process.Start();
+
+            // Synchronously read the standard output of the spawned process. 
+            StreamReader reader = process.StandardOutput;
+            string output = reader.ReadToEnd();
+
+            var lines = output.Split("\n", StringSplitOptions.RemoveEmptyEntries);
+
+            //aks-nodepool1-32979004-0   164m         16%       2140Mi          64%
+            var regex = new Regex(@"^([a-z0-9\-]+)\s+([0-9]+)m\s+([0-9]+)\%\s+([0-9]+)Mi\s+([0-9]+)");
+
+            KubernetesTop top = new KubernetesTop();
+            top.nodes = new List<NodeStat>();
+
+            foreach (var line in lines) {
+                var match = regex.Match(line);
+                if (match.Groups.Count == 6) {
+                    NodeStat stat = new NodeStat();
+                    stat.name = match.Groups[1].ToString();
+                    stat.cpuCores = int.Parse(match.Groups[2].ToString());
+                    stat.cpuPercent = int.Parse(match.Groups[3].ToString());
+                    stat.memBytes = int.Parse(match.Groups[4].ToString());
+                    stat.memPercent = int.Parse(match.Groups[5].ToString());
+                    top.nodes.Add(stat);
+                    top.avgCpuPercent += stat.cpuPercent;
+                    top.avgMemPercent += stat.memPercent;                   
+                }
+            }
+            top.avgCpuPercent = (int)Math.Round(Convert.ToSingle(top.avgCpuPercent)/top.nodes.Count,0); 
+            top.avgMemPercent = (int)Math.Round(Convert.ToSingle(top.avgMemPercent)/top.nodes.Count,0); 
+            return top;
         }
 
     }
